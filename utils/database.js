@@ -140,7 +140,48 @@ db.exec(`
     created_at  INTEGER DEFAULT (unixepoch()),
     active      INTEGER DEFAULT 1
   );
+
+  -- Produits du shop (stockés localement si pas de webapp)
+  CREATE TABLE IF NOT EXISTS shop_products (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id      TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    description   TEXT DEFAULT '',
+    image_url     TEXT DEFAULT '',
+    price_points  INTEGER NOT NULL DEFAULT 0,
+    reward_type   TEXT DEFAULT 'none',     -- 'role' | 'none'
+    reward_role_id TEXT DEFAULT '',        -- ID du rôle à donner si reward_type = 'role'
+    requires_validation INTEGER DEFAULT 0, -- 0 = instantané, 1 = validation modérateur
+    stock         INTEGER DEFAULT -1,      -- -1 = illimité
+    active        INTEGER DEFAULT 1,
+    sort_order    INTEGER DEFAULT 0,
+    created_by    TEXT DEFAULT '',
+    created_at    INTEGER DEFAULT (unixepoch())
+  );
+
+  -- Commandes shop (historique des achats de points)
+  CREATE TABLE IF NOT EXISTS shop_orders (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id      TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    product_id    INTEGER NOT NULL REFERENCES shop_products(id),
+    product_name  TEXT NOT NULL,
+    points_spent  INTEGER NOT NULL,
+    status        TEXT DEFAULT 'pending',  -- 'pending' | 'approved' | 'rejected' | 'delivered'
+    notif_msg_id  TEXT DEFAULT '',
+    moderator_id  TEXT DEFAULT '',
+    note          TEXT DEFAULT '',
+    created_at    INTEGER DEFAULT (unixepoch())
+  );
+
+  -- Config du salon shop (optionnel — pour épingler le shop dans un salon)
+  ALTER TABLE config ADD COLUMN channel_shop_id TEXT DEFAULT '' ;
 `);
+
+// Ignore "duplicate column" error silently (ALTER TABLE sur colonne existante)
+try {
+  db.exec(`ALTER TABLE config ADD COLUMN channel_shop_id TEXT DEFAULT '';`);
+} catch (_) { /* colonne déjà présente */ }
 
 // ─── Helpers Config ───────────────────────────────────────────────────────────
 
@@ -365,3 +406,83 @@ module.exports = {
   startFocus, endFocus, getActiveFocusSessions,
   createTestimonial, getTestimonial, updateTestimonial, getPendingTestimonials,
 };
+
+// ─── Helpers Shop ─────────────────────────────────────────────────────────────
+
+function getShopProducts(guildId, activeOnly = true) {
+  const q = activeOnly
+    ? 'SELECT * FROM shop_products WHERE guild_id = ? AND active = 1 ORDER BY sort_order ASC, id ASC'
+    : 'SELECT * FROM shop_products WHERE guild_id = ? ORDER BY sort_order ASC, id ASC';
+  return db.prepare(q).all(guildId);
+}
+
+function getShopProduct(productId) {
+  return db.prepare('SELECT * FROM shop_products WHERE id = ?').get(productId);
+}
+
+function createShopProduct(guildId, fields) {
+  const { name, description, image_url, price_points, reward_type, reward_role_id, requires_validation, stock, sort_order, created_by } = fields;
+  const result = db.prepare(`
+    INSERT INTO shop_products
+      (guild_id, name, description, image_url, price_points, reward_type, reward_role_id, requires_validation, stock, sort_order, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(guildId, name, description || '', image_url || '', price_points,
+      reward_type || 'none', reward_role_id || '', requires_validation ? 1 : 0,
+      stock ?? -1, sort_order || 0, created_by || '');
+  return result.lastInsertRowid;
+}
+
+function updateShopProduct(productId, fields) {
+  const cols = Object.keys(fields).map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE shop_products SET ${cols} WHERE id = ?`).run(...Object.values(fields), productId);
+}
+
+function deleteShopProduct(productId) {
+  db.prepare('UPDATE shop_products SET active = 0 WHERE id = ?').run(productId);
+}
+
+function decrementStock(productId) {
+  db.prepare('UPDATE shop_products SET stock = stock - 1 WHERE id = ? AND stock > 0').run(productId);
+}
+
+function createOrder(guildId, userId, productId, productName, pointsSpent) {
+  const result = db.prepare(`
+    INSERT INTO shop_orders (guild_id, user_id, product_id, product_name, points_spent)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(guildId, userId, productId, productName, pointsSpent);
+  return result.lastInsertRowid;
+}
+
+function getOrder(orderId) {
+  return db.prepare('SELECT * FROM shop_orders WHERE id = ?').get(orderId);
+}
+
+function updateOrder(orderId, fields) {
+  const cols = Object.keys(fields).map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE shop_orders SET ${cols} WHERE id = ?`).run(...Object.values(fields), orderId);
+}
+
+function getUserOrders(guildId, userId) {
+  return db.prepare(`
+    SELECT o.*, p.image_url FROM shop_orders o
+    LEFT JOIN shop_products p ON o.product_id = p.id
+    WHERE o.guild_id = ? AND o.user_id = ?
+    ORDER BY o.created_at DESC LIMIT 20
+  `).all(guildId, userId);
+}
+
+function getPendingOrders(guildId) {
+  return db.prepare(`
+    SELECT o.*, p.image_url FROM shop_orders o
+    LEFT JOIN shop_products p ON o.product_id = p.id
+    WHERE o.guild_id = ? AND o.status = 'pending'
+    ORDER BY o.created_at ASC
+  `).all(guildId);
+}
+
+// Re-export everything including shop helpers
+Object.assign(module.exports, {
+  getShopProducts, getShopProduct, createShopProduct, updateShopProduct,
+  deleteShopProduct, decrementStock,
+  createOrder, getOrder, updateOrder, getUserOrders, getPendingOrders,
+});

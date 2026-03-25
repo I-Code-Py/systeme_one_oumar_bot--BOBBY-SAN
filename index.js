@@ -50,6 +50,10 @@ client.commands.set('profil', profilCmd);
 const temoignageCmd = require('./commands/temoignage');
 client.commands.set('témoignage', temoignageCmd);
 
+// Shop
+const shopCmd = require('./commands/shop');
+client.commands.set('shop', shopCmd);
+
 // ─── Chargement des events ────────────────────────────────────────────────────
 const eventsPath = path.join(__dirname, 'events');
 const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
@@ -106,7 +110,7 @@ app.post('/webhook/n8n/callback', verifyN8nSignature, async (req, res) => {
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', bot: 'S-ONE Bot', by: 'Hackend - Systeme.one' }));
 
-const PORT = process.env.API_PORT || 3000;
+const PORT = process.env.PORT || process.env.API_PORT || 3000;
 app.listen(PORT, () => {
   console.log(`[API] Serveur interne démarré sur le port ${PORT}`);
 });

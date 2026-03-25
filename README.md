@@ -340,3 +340,76 @@ docker run -d \
 ---
 
 *⚡ Designed by Hackend — Systeme.one*
+
+---
+
+## 🛒 Système Shop (v2)
+
+### Vue d'ensemble
+
+Le shop permet aux élèves d'échanger leurs points contre des récompenses configurées par les Bot Managers. Il fonctionne en **mode hybride** :
+
+| Situation | Stockage produits | Sync achats |
+|-----------|------------------|-------------|
+| Pas de webapp | SQLite local | ✗ |
+| Webapp configurée | SQLite local (source of truth) | ✅ POST `/orders` à la webapp |
+
+### Commande `/shop` (élèves)
+
+- Navigation page par page avec boutons ◀ ▶ (1 produit / page avec image pleine)
+- Affichage : nom, description, image, prix en points, stock, type de livraison
+- Bouton **Acheter** grisé si solde insuffisant ou rupture de stock
+- Bouton **📋 Mes commandes** pour voir l'historique personnel
+- La navigation est **privée** : seul celui qui a lancé `/shop` peut naviguer ses boutons
+
+### Salon shop permanent
+
+Via `/paramètres → 🛒 Gérer le Shop → 📢 Définir le salon shop`, vous pouvez épingler le shop dans un salon textuel dédié. Le bot y poste automatiquement un embed par produit avec un bouton Acheter. Le salon est **republié automatiquement** à chaque modification de produit.
+
+### Types de livraison
+
+| Type | Comportement |
+|------|-------------|
+| **Instantané** | Points débités → rôle attribué (si configuré) → sync webapp → DM de confirmation |
+| **Validation modérateur** | Points débités → notification dans `#sone-logs` avec boutons Approuver/Refuser/Note → DM à l'acheteur selon décision |
+
+### Récompenses produit
+
+- **🎭 Rôle** : le bot attribue automatiquement un rôle Discord à l'achat (instantané) ou après validation
+- **🎁 Aucune** : livraison manuelle ou via webapp, le mod est notifié si validation requise
+
+### Gestion des produits — `/paramètres → 🛒 Gérer le Shop`
+
+Accessible aux **Bot Managers** et **Administrateurs**.
+
+| Action | Description |
+|--------|-------------|
+| ➕ Ajouter un produit | Wizard en 2 étapes : infos de base → type de récompense |
+| ✏️ Modifier | Édition inline via modal pré-rempli |
+| 🟢/🔴 Activer/Désactiver | Sans supprimer le produit |
+| 🗑️ Supprimer | Masque le produit (les commandes existantes restent) |
+| 📢 Définir le salon shop | Lier un salon pour le shop permanent |
+| 🔄 Republier | Force la mise à jour du salon shop |
+
+### Webhook webapp (achats)
+
+Quand une webapp est configurée, le bot envoie à chaque achat :
+
+```
+POST {webapp_api_url}/orders
+Authorization: Bearer {webapp_api_key}
+Content-Type: application/json
+
+{
+  "guildId": "...",
+  "userId": "...",
+  "productId": 12,
+  "productName": "Accès VIP",
+  "pointsSpent": 150,
+  "orderId": 42
+}
+```
+
+### Commande `/profil` — section achats shop
+
+La commande `/profil @membre` affiche désormais les **20 derniers achats shop** du membre (nom du produit, points dépensés, statut, date) en plus des achats webapp synchronisés.

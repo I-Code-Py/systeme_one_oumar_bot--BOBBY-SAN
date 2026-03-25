@@ -43,6 +43,7 @@ async function showParamsMenu(interaction, config) {
     new ButtonBuilder().setCustomId('params_points').setLabel('🎯 Modifier les points').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('params_rewards_toggle').setLabel('🔄 Toggle récompenses').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('params_excluded').setLabel('🚫 Salons exclus').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('params_shop').setLabel('🛒 Gérer le Shop').setStyle(ButtonStyle.Success),
   );
 
   const rows = [row1];
@@ -214,3 +215,5 @@ module.exports.handlers = {
   handleParamsExcluded,
   handleExcludedSelect,
 };
+// Re-export shopAdmin handlers directly from parametres for router convenience
+module.exports.shopAdmin = require('./shopAdmin');
